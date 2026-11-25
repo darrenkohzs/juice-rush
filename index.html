@@ -99,7 +99,7 @@
     <div class="speeds" role="group" aria-label="Game speed"></div>
     <button class="btn" id="playBtn">Play</button>
     <div class="hint" id="bestLine"></div>
-    <div class="hint"><kbd>Space</kbd> / <kbd>↑</kbd> / click / tap to jump · hold to keep hopping<br><kbd>Esc</kbd> pause · <kbd>M</kbd> mute · <kbd>[</kbd> <kbd>]</kbd> speed</div>
+    <div class="hint"><kbd>Space</kbd> / <kbd>↑</kbd> / click / tap to jump · hold to keep hopping · burst once and keep going as a seed<br><kbd>Esc</kbd> pause · <kbd>M</kbd> mute · <kbd>[</kbd> <kbd>]</kbd> speed</div>
   </div>
 </div>
 
@@ -143,9 +143,11 @@ const G = 100;         // gravity, tiles/s^2
 const JV = 21;         // jump velocity
 const PADV = 30;       // jump pad launch velocity
 const ORBV = 20;       // jump ring velocity
-const SHIP_G = 55;     // spaceship gravity (floatier than the fruit)
-const FLAP = 13;       // spaceship upward kick per tap
-const SHIP_MAXFALL = -16;
+const SHIP_G = 50;     // spaceship falls with this when the button is released
+const SHIP_UP = 50;    // ...and rises with this while the button is held
+const SHIP_MAXRISE = 9, SHIP_MAXFALL = -11;
+const SEED = 0.6;      // hitbox size after the fruit bursts into its seed
+const SEED_SAFE = 0.6; // seconds of invulnerability right after bursting
 const PS = 0.9;        // player hitbox size (tiles)
 const STEP = 1 / 240;  // fixed physics step
 
@@ -246,7 +248,7 @@ const LEVELS = [
       CAB(24, 10); S(27); HANG(30); S(32, 0, 2);
       S(40); PAD(44); S(46, 0, 3);
       // Section 2 — blast off: Flappy-style spaceship
-      H(54, 3.2, "Spaceship! Tap to flap, don't hold");
+      H(54, 3.2, "Spaceship! Hold to rise, let go to fall");
       PORTAL(60, "ship"); CAB(61, 99, 6.5);
       PIPE(70, 1, 4); PIPE(78, 2, 5); PIPE(86, 0, 3); PIPE(94, 3, 6);
       PIPE(102, 1.5, 4); PIPE(110, 2.5, 5); PIPE(117, 1, 3.6); PIPE(124, 3, 5.6);
@@ -281,28 +283,48 @@ function buildLevel(def) {
 let L = buildLevel(LEVELS[0]);
 
 /* ================= Simulation (pure, used by game & solver) ================= */
-const EV_JUMP = 1, EV_LAND = 2, EV_PAD = 4, EV_ORB = 8, EV_PORTAL = 16;
-function newState() { return { x: 0, y: 0, vy: 0, grounded: true, dead: false, won: false, orbs: 0, buf: 0, ev: 0, jumps: 0, ship: false, ceil: 0, portals: 0 }; }
+const EV_JUMP = 1, EV_LAND = 2, EV_PAD = 4, EV_ORB = 8, EV_PORTAL = 16, EV_BURST = 32;
+function newState() {
+  return { x: 0, y: 0, vy: 0, grounded: true, dead: false, won: false, orbs: 0, buf: 0, ev: 0, jumps: 0,
+           ship: false, ceil: 0, portals: 0, thrust: false,
+           size: PS, seed: false, inv: 0 };   // size shrinks to SEED when the fruit bursts
+}
 const overlap = (ax, ay, aw, ah, bx, by, bw, bh) => ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+
+// First hit bursts the fruit and leaves a smaller seed that keeps going (briefly invulnerable).
+// A hit on the seed ends the attempt. Returns true when the attempt is over.
+function hurt(s) {
+  if (s.inv > 0) return false;
+  if (!s.seed) {
+    s.seed = true; s.x += (s.size - SEED) / 2; s.size = SEED; s.inv = SEED_SAFE;
+    if (!s.ship) { s.vy = Math.max(s.vy, 8); s.grounded = false; }
+    s.ev |= EV_BURST;
+    return false;
+  }
+  s.dead = true;
+  return true;
+}
 
 function simStep(s, held, pressed, n) {
   if (pressed) s.buf = 0.12;
   for (let k = 0; k < n; k++) {
-    const h = STEP, py = s.y, wasGrounded = s.grounded;
-    s.vy = s.ship ? Math.max(s.vy - SHIP_G * h, SHIP_MAXFALL) : Math.max(s.vy - G * h, -40);
+    const h = STEP, py = s.y, wasGrounded = s.grounded, sz = s.size;
+    s.thrust = s.ship && held;
+    if (s.ship) s.vy = Math.min(SHIP_MAXRISE, Math.max(SHIP_MAXFALL, s.vy + (held ? SHIP_UP : -SHIP_G) * h));
+    else s.vy = Math.max(s.vy - G * h, -40);
     s.y += s.vy * h;
     s.x += SPEED * h;
     s.grounded = false;
     if (s.y <= 0) { s.y = 0; s.vy = 0; s.grounded = true; }
-    if (s.ship && s.y + PS > s.ceil) { s.y = s.ceil - PS; if (s.vy > 0) s.vy = 0; }   // ship bumps the ceiling safely
+    if (s.ship && s.y + sz > s.ceil) { s.y = s.ceil - sz; if (s.vy > 0) s.vy = 0; }   // ship bumps the ceiling safely
 
     for (const b of L.blocks) {
       if (b.x > s.x + 2 || b.x + b.w < s.x - 1) continue;
-      if (s.x + PS > b.x && s.x < b.x + b.w) {
+      if (s.x + s.size > b.x && s.x < b.x + b.w) {
         const top = b.y + b.h;
-        if (s.y < top && s.y + PS > b.y) {
+        if (s.y < top && s.y + s.size > b.y) {
           if (s.vy <= 0 && py >= top - 0.35) { s.y = top; s.vy = 0; s.grounded = true; }
-          else { s.dead = true; return s; }
+          else if (hurt(s)) return s;
         }
       }
     }
@@ -310,25 +332,23 @@ function simStep(s, held, pressed, n) {
 
     for (let i = 0; i < L.portals.length; i++) {
       const pt = L.portals[i];
-      if (!(s.portals & (1 << i)) && s.x + PS >= pt.x) {
+      if (!(s.portals & (1 << i)) && s.x + s.size >= pt.x) {
         s.portals |= 1 << i; s.ship = pt.mode === "ship"; s.ceil = pt.ceil; s.ev |= EV_PORTAL;
         if (s.ship) s.vy = Math.min(s.vy, 4);
       }
     }
 
-    if (s.ship) {
-      // Flappy-style: each tap gives one kick upward; holding does nothing extra
-      if (s.buf > 0) { s.vy = FLAP; s.grounded = false; s.buf = 0; s.ev |= EV_JUMP; s.jumps++; }
-    } else if (s.grounded && (held || s.buf > 0)) {
+    if (!s.ship && s.grounded && (held || s.buf > 0)) {
       s.vy = JV; s.grounded = false; s.buf = 0; s.ev |= EV_JUMP; s.jumps++;
     }
+    if (s.ship) s.buf = 0;
     if (!s.ship) for (const p of L.pads) {
-      if (s.vy < PADV - 5 && overlap(s.x, s.y, PS, PS, p.x + 0.1, p.y, 0.8, 0.3)) {
+      if (s.vy < PADV - 5 && overlap(s.x, s.y, s.size, s.size, p.x + 0.1, p.y, 0.8, 0.3)) {
         s.vy = PADV; s.grounded = false; s.ev |= EV_PAD;
       }
     }
     if (s.buf > 0 && !s.ship) {
-      const cx = s.x + PS / 2, cy = s.y + PS / 2;
+      const cx = s.x + s.size / 2, cy = s.y + s.size / 2;
       for (let i = 0; i < L.orbs.length; i++) {
         const o = L.orbs[i];
         if (s.orbs & (1 << i)) continue;
@@ -339,25 +359,54 @@ function simStep(s, held, pressed, n) {
         }
       }
     }
+    const m = s.size * 0.11;   // spike hitbox is a little smaller than the body
     for (const sp of L.spikes) {
       if (sp.x > s.x + 2 || sp.x < s.x - 2) continue;
-      if (overlap(s.x + 0.1, s.y + 0.1, PS - 0.2, PS - 0.2, sp.x + 0.35, sp.down ? sp.y + 0.45 : sp.y, 0.3, 0.55)) { s.dead = true; return s; }
+      if (overlap(s.x + m, s.y + m, s.size - 2 * m, s.size - 2 * m, sp.x + 0.35, sp.down ? sp.y + 0.45 : sp.y, 0.3, 0.55)) {
+        if (hurt(s)) return s;
+        break;
+      }
     }
     if (s.x >= L.end) { s.won = true; return s; }
     s.buf = Math.max(0, s.buf - h);
+    s.inv = Math.max(0, s.inv - h);
   }
   return s;
 }
 
 /* ================= Fruit art ================= */
+function mixHex(a, b, t) {
+  const p = h => { const n = parseInt(h.slice(1, 7), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
+  const A = p(a), Bc = p(b);
+  return "#" + A.map((v, i) => Math.round(v + (Bc[i] - v) * t).toString(16).padStart(2, "0")).join("");
+}
+// seed = colour of the seed left behind after the fruit bursts
 const FRUITS = [
-  { id: "apple", name: "Apple", body: "#e8322f", dark: "#8f1414", juice: ["#ff4d4d", "#ffd0c8", "#fff1a8"] },
-  { id: "orange", name: "Orange", body: "#ff9a1f", dark: "#b35a00", juice: ["#ffb347", "#ffd27a", "#fff1c2"] },
-  { id: "strawberry", name: "Berry", body: "#e0234e", dark: "#7d0d26", juice: ["#ff5c7a", "#ff9fb2", "#fff176"] },
-  { id: "lemon", name: "Lemon", body: "#ffe135", dark: "#a88c00", juice: ["#fff176", "#fffbd0", "#d9f99d"] },
-  { id: "mango", name: "Mango", body: "#ffb627", dark: "#c2560a", juice: ["#ffc94d", "#ff8c42", "#fff1a8"] },
-  { id: "durian", name: "Durian", body: "#c4b43c", dark: "#5f5410", juice: ["#f5e8a0", "#e0cc5c", "#fffbe0"] },
+  { id: "apple", name: "Apple", body: "#e8322f", dark: "#8f1414", juice: ["#ff4d4d", "#ffd0c8", "#fff1a8"], seed: "#5a3214" },
+  { id: "avocado", name: "Avocado", body: "#7fb236", dark: "#24380d", juice: ["#b5d96a", "#e8f5a8", "#8a5a30"], seed: "#8a5428" },
+  { id: "strawberry", name: "Berry", body: "#e0234e", dark: "#7d0d26", juice: ["#ff5c7a", "#ff9fb2", "#fff176"], seed: "#e8c64a" },
+  { id: "lemon", name: "Lemon", body: "#ffe135", dark: "#a88c00", juice: ["#fff176", "#fffbd0", "#d9f99d"], seed: "#efe3b8" },
+  { id: "mango", name: "Mango", body: "#ffb627", dark: "#c2560a", juice: ["#ffc94d", "#ff8c42", "#fff1a8"], seed: "#e9d7a6" },
+  { id: "durian", name: "Durian", body: "#c4b43c", dark: "#5f5410", juice: ["#f5e8a0", "#e0cc5c", "#fffbe0"], seed: "#a0612c" },
 ];
+
+// a teardrop seed with a little face, coloured per fruit
+function drawSeed(c, kind, r) {
+  const f = FRUITS.find(f => f.id === kind) || FRUITS[0];
+  const g = c.createRadialGradient(-r * 0.3, -r * 0.35, r * 0.05, 0, 0, r * 1.1);
+  g.addColorStop(0, "#ffffff66"); g.addColorStop(0.3, f.seed); g.addColorStop(1, mixHex(f.seed, "#000000", 0.45));
+  c.fillStyle = g; c.strokeStyle = mixHex(f.seed, "#000000", 0.6); c.lineWidth = r * 0.09; c.lineJoin = "round";
+  c.beginPath();
+  if (kind === "avocado") c.arc(0, 0, r * 0.92, 0, Math.PI * 2);                 // round pit
+  else {
+    c.moveTo(0, -r * 1.0);
+    c.bezierCurveTo(r * 0.55, -r * 0.55, r * 0.9, r * 0.2, r * 0.75, r * 0.6);
+    c.bezierCurveTo(r * 0.55, r * 1.0, -r * 0.55, r * 1.0, -r * 0.75, r * 0.6);
+    c.bezierCurveTo(-r * 0.9, r * 0.2, -r * 0.55, -r * 0.55, 0, -r * 1.0);
+  }
+  c.fill(); c.stroke();
+  c.save(); c.translate(0, r * 0.15); face(c, r * 0.8); c.restore();
+}
 
 function leaf(c, x, y, r, rot) {
   c.save(); c.translate(x, y); c.rotate(rot);
@@ -389,15 +438,25 @@ function drawFruit(c, kind, r) {
     c.strokeStyle = "#6b3a12"; c.lineWidth = r * 0.12; c.lineCap = "round";
     c.beginPath(); c.moveTo(0, -r * 0.66); c.lineTo(r * 0.1, -r * 1.02); c.stroke();
     leaf(c, r * 0.32, -r * 0.92, r, -0.5);
-  } else if (kind === "orange") {
-    c.arc(0, 0, r * 0.95, 0, Math.PI * 2); c.fill(); c.stroke();
-    c.fillStyle = "rgba(120,50,0,0.25)";
-    for (let i = 0; i < 14; i++) {
-      const a = i * 2.4, d = r * (0.35 + (i % 4) * 0.14);
-      c.beginPath(); c.arc(Math.cos(a) * d, Math.sin(a) * d, r * 0.035, 0, Math.PI * 2); c.fill();
-    }
-    c.fillStyle = "#2f7d32"; c.beginPath(); c.arc(0, -r * 0.9, r * 0.09, 0, Math.PI * 2); c.fill();
-    leaf(c, r * 0.28, -r * 0.98, r, -0.35);
+  } else if (kind === "avocado") {
+    // halved avocado: dark skin, pale flesh, brown pit; face sits above the pit
+    const pear = k => {
+      c.beginPath();
+      c.moveTo(0, -r * 1.0 * k);
+      c.bezierCurveTo(r * 0.45 * k, -r * 1.0 * k, r * 0.55 * k, -r * 0.45 * k, r * 0.75 * k, r * 0.05 * k);
+      c.bezierCurveTo(r * 1.0 * k, r * 0.6 * k, r * 0.6 * k, r * 1.0 * k, 0, r * 1.0 * k);
+      c.bezierCurveTo(-r * 0.6 * k, r * 1.0 * k, -r * 1.0 * k, r * 0.6 * k, -r * 0.75 * k, r * 0.05 * k);
+      c.bezierCurveTo(-r * 0.55 * k, -r * 0.45 * k, -r * 0.45 * k, -r * 1.0 * k, 0, -r * 1.0 * k);
+    };
+    c.fillStyle = "#2f4a12"; c.strokeStyle = "#1a2a08"; pear(1); c.fill(); c.stroke();
+    const fg = c.createRadialGradient(0, r * 0.2, r * 0.1, 0, 0, r);
+    fg.addColorStop(0, "#f1f7b0"); fg.addColorStop(0.6, "#c8e27a"); fg.addColorStop(1, "#7fb236");
+    c.fillStyle = fg; pear(0.84); c.fill();
+    const pg = c.createRadialGradient(-r * 0.08, r * 0.38, 0, 0, r * 0.45, r * 0.3);
+    pg.addColorStop(0, "#c58a52"); pg.addColorStop(1, "#7a4520");
+    c.fillStyle = pg; c.beginPath(); c.arc(0, r * 0.47, r * 0.28, 0, Math.PI * 2); c.fill();
+    c.save(); c.translate(0, -r * 0.33); face(c, r * 0.85); c.restore();
+    return;
   } else if (kind === "strawberry") {
     c.moveTo(0, r * 1.0);
     c.bezierCurveTo(-r * 0.6, r * 0.7, -r * 1.05, r * 0.0, -r * 0.9, -r * 0.45);
@@ -564,6 +623,11 @@ function sfxDeath() {
   g.gain.setValueAtTime(0.4, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
   o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.4);
 }
+function sfxBurst() {
+  if (!actx) return; const t = actx.currentTime;
+  noise(t, 0.25, 0.45, 1200, "lowpass", master);
+  tone(330, t, 0.12, "triangle", 0.15, master); tone(220, t + 0.06, 0.14, "triangle", 0.12, master);
+}
 function sfxPortal() {
   if (!actx) return; const t = actx.currentTime;
   const o = actx.createOscillator(), g = actx.createGain();
@@ -590,6 +654,7 @@ let attempts = 0, angle = 0, squash = 0, camX = 0, camY = 0, shake = 0, deadTime
 let held = false, pressQueued = false, flapT = 0;
 let particles = [];
 let fruit = store.get("jr_fruit", "apple");
+if (fruit === "orange") fruit = "avocado";
 let levelIdx = Math.min(LEVELS.length - 1, Math.max(0, Number(store.get("jr_level", 0)) || 0));
 L = buildLevel(LEVELS[levelIdx]);
 const bestKey = (id = L.id, pct = speedPct) => `jr_best_${id}_${pct}`;
@@ -674,11 +739,22 @@ function die() {
   mode = "dead"; deadTimer = 0.9; shake = 0.6; stopMusic(); sfxDeath();
   const pct = Math.floor(progress() * 100);
   if (pct > best) { best = pct; store.set(bestKey(), best); }
-  const f = fruitDef(), cx = P.x + PS / 2, cy = P.y + PS / 2;
+  const f = fruitDef(), cx = P.x + P.size / 2, cy = P.y + P.size / 2;
+  const cols = P.seed ? [f.seed, mixHex(f.seed, "#ffffff", 0.4), mixHex(f.seed, "#000000", 0.3)] : f.juice;
   for (let i = 0; i < 46; i++) {
     const a = Math.random() * Math.PI * 2, sp = 3 + Math.random() * 10;
     particles.push({ x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp + 4, life: 0.6 + Math.random() * 0.7, max: 1.3,
-      c: f.juice[i % 3], r: 0.06 + Math.random() * 0.14, g: 1 });
+      c: cols[i % 3], r: 0.06 + Math.random() * 0.14, g: 1 });
+  }
+}
+// fruit bursts into juice but the run continues as its seed
+function burst() {
+  shake = 0.45; sfxBurst();
+  const f = fruitDef(), cx = P.x + P.size / 2, cy = P.y + P.size / 2;
+  for (let i = 0; i < 40; i++) {
+    const a = Math.random() * Math.PI * 2, sp = 3 + Math.random() * 9;
+    particles.push({ x: cx, y: cy, vx: Math.cos(a) * sp + 4, vy: Math.sin(a) * sp + 4, life: 0.5 + Math.random() * 0.6, max: 1.1,
+      c: f.juice[i % 3], r: 0.06 + Math.random() * 0.13, g: 1 });
   }
 }
 function win() {
@@ -935,7 +1011,7 @@ function drawAppliance(c, b, x, y, w, h, u, accent, pulse) {
 }
 
 // the fruit rides in a little saucer: hull, fins, glass dome, thruster flame
-function drawShip(c, kind, r, flame) {
+function drawShip(c, kind, r, flame, isSeed) {
   if (flame > 0) {
     const len = r * (0.7 + flame * 5);
     const fg = c.createLinearGradient(-r * 1.1, 0, -r * 1.1 - len, 0);
@@ -950,7 +1026,7 @@ function drawShip(c, kind, r, flame) {
   c.beginPath(); c.ellipse(0, r * 0.38, r * 1.15, r * 0.36, 0, 0, Math.PI * 2); c.fill(); c.stroke();                       // hull
   c.fillStyle = "#ffe14d";
   for (const lx of [-0.55, 0, 0.55]) { c.beginPath(); c.arc(lx * r, r * 0.42, r * 0.08, 0, Math.PI * 2); c.fill(); }      // lights
-  c.save(); c.translate(0, -r * 0.12); c.scale(0.62, 0.62); drawFruit(c, kind, r); c.restore();                           // pilot
+  c.save(); c.translate(0, -r * 0.12); c.scale(0.62, 0.62); if (isSeed) drawSeed(c, kind, r * 0.75); else drawFruit(c, kind, r); c.restore();                           // pilot
   c.fillStyle = "rgba(170,225,255,0.22)"; c.strokeStyle = "rgba(220,245,255,0.8)"; c.lineWidth = r * 0.05;
   c.beginPath(); c.arc(0, r * 0.12, r * 0.72, Math.PI, 0); c.closePath(); c.fill(); c.stroke();                         // dome
   c.strokeStyle = "rgba(255,255,255,0.7)"; c.lineWidth = r * 0.06;
@@ -1097,10 +1173,12 @@ function render(dt) {
   if (mode === "play" || mode === "paused" || (mode === "win" && particles.length)) {
     if (mode !== "win") {
       ctx.save();
-      ctx.translate(sx(P.x + PS / 2), sy(P.y + PS / 2) + squash * T * 0.08);
+      ctx.translate(sx(P.x + P.size / 2), sy(P.y + P.size / 2) + squash * T * 0.08);
+      if (P.inv > 0 && Math.floor(P.inv * 16) % 2) ctx.globalAlpha = 0.45;   // blink while invulnerable
       ctx.scale(1 + 0.22 * squash, 1 - 0.22 * squash);
       ctx.rotate(angle);
-      if (P.ship) drawShip(ctx, fruit, T * 0.5, flapT);
+      if (P.ship) drawShip(ctx, fruit, T * 0.5, flapT, P.seed);
+      else if (P.seed) drawSeed(ctx, fruit, T * 0.5 * (SEED / PS));
       else drawFruit(ctx, fruit, T * 0.5);
       ctx.restore();
     }
@@ -1128,7 +1206,7 @@ function frame(now) {
       if (P.ev) {
         if (P.ev & EV_LAND) squash = 1;
         if (P.ev & EV_PORTAL) { sfxPortal(); shake = 0.25; }
-        if ((P.ev & EV_JUMP) && P.ship) flapT = 0.14;
+        if (P.ev & EV_BURST) burst();
         if (P.ev & EV_PAD) sfxPad();
         if (P.ev & EV_ORB) sfxOrb();
         P.ev = 0;
@@ -1137,7 +1215,7 @@ function frame(now) {
       if (P.won) { win(); break; }
     }
     if (mode === "play") {
-      flapT = Math.max(0, flapT - dt);
+      flapT = P.thrust ? Math.min(0.14, flapT + dt) : Math.max(0, flapT - dt);   // flame grows while holding
       if (P.ship) {
         // nose follows the vertical speed
         const target = Math.max(-0.55, Math.min(0.55, -P.vy * 0.045));
