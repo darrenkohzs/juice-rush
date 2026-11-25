@@ -45,7 +45,7 @@
   .level-btn.sel { border-color: var(--accent); background: rgba(255,225,77,0.12); }
   .level-btn b { display: block; font-size: 19px; }
   .level-btn .tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; margin: 4px 0; color: #14081e; }
-  .level-btn .tag.easy { background: #7dffb3; } .level-btn .tag.normal { background: #ffd166; } .level-btn .tag.hard { background: #ff8a8a; } .level-btn .tag.expert { background: #c99bff; }
+  .level-btn .tag.easy { background: #7dffb3; } .level-btn .tag.normal { background: #ffd166; } .level-btn .tag.hard { background: #ff8a8a; } .level-btn .tag.expert { background: #c99bff; } .level-btn .tag.master { background: #ff6ad5; }
   .level-btn small { display: block; color: var(--muted); font-size: 12px; }
   .speeds { display: flex; align-items: center; gap: 10px; margin: 0 auto 20px; max-width: 340px; }
   .speed-end { font-size: 12px; color: var(--muted); }
@@ -159,6 +159,8 @@ const STEP = 1 / 240;  // fixed physics step
      S(x, y, n)            n upright knives/forks standing on y
      D(x, y, n)            n knives hanging point-down from the underside at y + 1
      PAD(x, y)  launch pan     O(x, y)  jump ring     H(x, y, text)  hint     END(x)  finish line
+     PORTAL(x, "flip" | "normal")      gravity portal: "flip" makes the fruit fall up and run along
+                                       the undersides of blocks (jumps go downward); "normal" undoes it
      PORTAL(x, "ship" | "cube", ceil)  transform portal; in ship mode taps flap (Flappy-style) and
                                        the ship can't fly above `ceil` */
 const LEVELS = [
@@ -170,6 +172,7 @@ const LEVELS = [
       { at: 104, top: "#1a2a6c", bot: "#f0a92a", ground: "#3b2a0a", accent: "#ffd166" }, // citrus sky
       { at: 154, top: "#3a0010", bot: "#ff4e50", ground: "#2a0508", accent: "#ff9a8b" }, // watermelon
       { at: 199, top: "#0b1a4a", bot: "#5b6cff", ground: "#0a1030", accent: "#9fb4ff" }, // blueberry
+      { at: 256, top: "#13210a", bot: "#7fbf3f", ground: "#0d1a06", accent: "#d9ff8a" }, // kiwi
     ],
     build({ B, S, PAD, O, H, END }) {
       // Section 1 — warm-up hops (singles only)
@@ -194,7 +197,12 @@ const LEVELS = [
       S(212, 0, 8); O(213, 1.5); O(217, 1.5);
       PAD(226); S(230, 0, 6); B(230, 2, 6, 1); O(232.5, 4.2);
       PAD(242); S(244, 0, 6); O(246, 2.65);
-      END(258);
+      // Section 6 — kiwi encore
+      S(262); B(268, 0, 2, 1); S(270); B(271, 0, 2, 1); S(278);
+      PAD(284); S(286, 0, 3);
+      B(294, 0, 3, 1); S(297, 0, 2); B(299, 0, 3, 1);
+      S(308); S(314, 0, 4); O(314, 1.5);
+      END(322);
     },
   },
   {
@@ -204,6 +212,7 @@ const LEVELS = [
       { at: 48,  top: "#2a1a05", bot: "#c9821b", ground: "#231503", accent: "#fff3a0" }, // caramel
       { at: 96,  top: "#05261c", bot: "#1f9e6e", ground: "#041b14", accent: "#d4ff5c" }, // green banana
       { at: 140, top: "#2b0a2e", bot: "#b8337a", ground: "#1e0620", accent: "#ffd23f" }, // banana split
+      { at: 190, top: "#2a1a00", bot: "#e0a800", ground: "#1f1300", accent: "#fff8c4" }, // ripe banana
     ],
     build({ B, S, D, PAD, O, H, END }) {
       const CAB = (x, w) => B(x, 3.2, w, 30, "cabinet");  // upper cupboard reaching the ceiling, underside at y = 3.2
@@ -225,7 +234,11 @@ const LEVELS = [
       CAB(140, 22); S(143); HANG(146); S(148); HANG(151); S(153); HANG(156); S(158);
       S(166, 0, 2);
       S(172, 0, 12); O(173, 1.5); O(177, 1.5); O(181, 1.5);
-      END(192);
+      // Section 5 — ripe encore
+      CAB(196, 10); HANG(198); S(200); HANG(203);
+      S(210, 0, 2); PAD(216); S(218, 0, 3);
+      CAB(224, 10); S(227); HANG(230); S(232, 0, 2);
+      END(240);
     },
   },
   {
@@ -234,6 +247,7 @@ const LEVELS = [
       { at: 0,   top: "#2a0010", bot: "#9b1238", ground: "#1c000a", accent: "#ff4d6d" }, // cherry red
       { at: 56,  top: "#05010f", bot: "#2a0f5c", ground: "#07031a", accent: "#ff5cf0" }, // space pantry
       { at: 150, top: "#1a0f2e", bot: "#6b1f6b", ground: "#12081f", accent: "#ffd23f" }, // cherry night
+      { at: 214, top: "#05010f", bot: "#1f2a6b", ground: "#07031a", accent: "#5cf0ff" }, // second launch
     ],
     build({ B, S, D, PAD, O, H, PORTAL, END }) {
       const CAB = (x, w, y = 3.2) => B(x, y, w, 30, "cabinet");
@@ -260,7 +274,55 @@ const LEVELS = [
       S(168, 0, 2);
       CAB(174, 16); S(177); HANG(180); S(182); HANG(185); S(187);
       S(196, 0, 12); O(197, 1.5); O(201, 1.5); O(205, 1.5);
-      END(216);
+      // Section 4 — second launch
+      PORTAL(220, "ship"); CAB(221, 30, 6.5);
+      PIPE(228, 1.5, 4); PIPE(235, 2.5, 5); PIPE(242, 0.8, 3.3);
+      PORTAL(250, "cube");
+      S(256, 0, 2); S(262);
+      END(270);
+    },
+  },
+  {
+    id: "dragonfruit", name: "Dragonfruit", difficulty: "Master",
+    themes: [
+      { at: 0,   top: "#1a0420", bot: "#c41e6a", ground: "#14021a", accent: "#7dff6a" }, // dragon skin
+      { at: 62,  top: "#04202a", bot: "#0f7a7a", ground: "#031418", accent: "#ff4fa8" }, // upside-down lagoon
+      { at: 156, top: "#05010f", bot: "#3a0a5c", ground: "#07031a", accent: "#7dff6a" }, // night flight
+      { at: 220, top: "#2a0018", bot: "#ff2e88", ground: "#1a0010", accent: "#fff35c" }, // dragon fire
+    ],
+    build({ B, S, D, PAD, O, H, PORTAL, END }) {
+      const CAB = (x, w, y = 3.2) => B(x, y, w, 30, "cabinet");
+      const HANG = (x, y = 2.2, n = 1) => D(x, y, n);
+      const PIPE = (x, gapLo, gapHi) => {
+        if (gapLo > 0) B(x, 0, 2, gapLo, gapLo >= 2.5 ? "fridge" : gapLo >= 1.5 ? "oven" : "microwave");
+        B(x, gapHi, 2, 6.5 - gapHi, "cabinet");
+      };
+      // Section 1 — on foot, no warm-up
+      S(12, 0, 2); S(18, 0, 2);
+      CAB(24, 16); S(27); HANG(30); S(32, 0, 2); HANG(35); S(37);
+      S(46, 0, 2); PAD(52); S(54, 0, 3);
+      // Section 2 — upside down: gravity pulls you to the cupboards, jumps go downward
+      H(58, 3.4, "Upside down! Jumps now go downward");
+      PORTAL(64, "flip"); CAB(64, 88, 5);
+      D(74, 4); D(80, 4, 2);                                   // knives on the cupboard you run along
+      B(86, 0, 24, 1.8, "counter");                            // counter reaching up from below...
+      D(87, 4); S(90, 1.8); D(92, 4); S(95, 1.8); D(97, 4);    // ...with knives on it, alternating with
+      S(100, 1.8); D(102, 4); S(105, 1.8); D(107, 4);          //    knives above
+      D(116, 4, 12); O(117, 2.5); O(121, 2.5); O(125, 2.5);    // ring chain, mirrored
+      D(134, 4, 2); D(140, 4);
+      PORTAL(148, "normal");
+      // Section 3 — night flight, tighter gaps than Cherry
+      H(154, 3.2, "Hold to rise!");
+      PORTAL(160, "ship"); CAB(161, 59, 6.5);
+      PIPE(168, 1, 3.6); PIPE(175, 2.2, 4.8); PIPE(182, 0.6, 3.2); PIPE(189, 2.8, 5.4);
+      PIPE(196, 1.4, 4); PIPE(203, 3, 5.6); PIPE(210, 1, 3.6);
+      PORTAL(218, "cube");
+      // Section 4 — dragon-fire finale
+      S(224, 0, 2);
+      CAB(230, 16); S(233); HANG(236); S(238, 0, 2); HANG(241); S(243);
+      S(252, 0, 12); O(253, 1.5); O(257, 1.5); O(261, 1.5);
+      S(270, 0, 2); S(276);
+      END(284);
     },
   },
 ];
@@ -286,7 +348,7 @@ let L = buildLevel(LEVELS[0]);
 const EV_JUMP = 1, EV_LAND = 2, EV_PAD = 4, EV_ORB = 8, EV_PORTAL = 16, EV_BURST = 32;
 function newState() {
   return { x: 0, y: 0, vy: 0, grounded: true, dead: false, won: false, orbs: 0, buf: 0, ev: 0, jumps: 0,
-           ship: false, ceil: 0, portals: 0, thrust: false,
+           ship: false, ceil: 0, portals: 0, thrust: false, flip: false,   // flip = gravity pulls upward
            size: PS, seed: false, inv: 0 };   // size shrinks to SEED when the fruit bursts
 }
 const overlap = (ax, ay, aw, ah, bx, by, bw, bh) => ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
@@ -297,7 +359,7 @@ function hurt(s) {
   if (s.inv > 0) return false;
   if (!s.seed) {
     s.seed = true; s.x += (s.size - SEED) / 2; s.size = SEED; s.inv = SEED_SAFE;
-    if (!s.ship) { s.vy = Math.max(s.vy, 8); s.grounded = false; }
+    if (!s.ship) { s.vy = s.flip ? Math.min(s.vy, -8) : Math.max(s.vy, 8); s.grounded = false; }
     s.ev |= EV_BURST;
     return false;
   }
@@ -311,11 +373,12 @@ function simStep(s, held, pressed, n) {
     const h = STEP, py = s.y, wasGrounded = s.grounded, sz = s.size;
     s.thrust = s.ship && held;
     if (s.ship) s.vy = Math.min(SHIP_MAXRISE, Math.max(SHIP_MAXFALL, s.vy + (held ? SHIP_UP : -SHIP_G) * h));
+    else if (s.flip) s.vy = Math.min(s.vy + G * h, 40);   // upside down: falls toward the ceiling
     else s.vy = Math.max(s.vy - G * h, -40);
     s.y += s.vy * h;
     s.x += SPEED * h;
     s.grounded = false;
-    if (s.y <= 0) { s.y = 0; s.vy = 0; s.grounded = true; }
+    if (s.y <= 0) { s.y = 0; s.vy = 0; s.grounded = !s.flip || s.ship; }
     if (s.ship && s.y + sz > s.ceil) { s.y = s.ceil - sz; if (s.vy > 0) s.vy = 0; }   // ship bumps the ceiling safely
 
     for (const b of L.blocks) {
@@ -323,7 +386,8 @@ function simStep(s, held, pressed, n) {
       if (s.x + s.size > b.x && s.x < b.x + b.w) {
         const top = b.y + b.h;
         if (s.y < top && s.y + s.size > b.y) {
-          if (s.vy <= 0 && py >= top - 0.35) { s.y = top; s.vy = 0; s.grounded = true; }
+          if (!s.flip && s.vy <= 0 && py >= top - 0.35) { s.y = top; s.vy = 0; s.grounded = true; }
+          else if (s.flip && !s.ship && s.vy >= 0 && py + s.size <= b.y + 0.35) { s.y = b.y - s.size; s.vy = 0; s.grounded = true; }  // land on an underside
           else if (hurt(s)) return s;
         }
       }
@@ -333,18 +397,21 @@ function simStep(s, held, pressed, n) {
     for (let i = 0; i < L.portals.length; i++) {
       const pt = L.portals[i];
       if (!(s.portals & (1 << i)) && s.x + s.size >= pt.x) {
-        s.portals |= 1 << i; s.ship = pt.mode === "ship"; s.ceil = pt.ceil; s.ev |= EV_PORTAL;
-        if (s.ship) s.vy = Math.min(s.vy, 4);
+        s.portals |= 1 << i; s.ev |= EV_PORTAL;
+        if (pt.mode === "ship") { s.ship = true; s.ceil = pt.ceil; s.vy = Math.min(s.vy, 4); }
+        else if (pt.mode === "cube") s.ship = false;
+        else if (pt.mode === "flip") { s.flip = true; s.grounded = false; }
+        else if (pt.mode === "normal") { s.flip = false; s.grounded = false; }
       }
     }
 
     if (!s.ship && s.grounded && (held || s.buf > 0)) {
-      s.vy = JV; s.grounded = false; s.buf = 0; s.ev |= EV_JUMP; s.jumps++;
+      s.vy = s.flip ? -JV : JV; s.grounded = false; s.buf = 0; s.ev |= EV_JUMP; s.jumps++;
     }
     if (s.ship) s.buf = 0;
     if (!s.ship) for (const p of L.pads) {
-      if (s.vy < PADV - 5 && overlap(s.x, s.y, s.size, s.size, p.x + 0.1, p.y, 0.8, 0.3)) {
-        s.vy = PADV; s.grounded = false; s.ev |= EV_PAD;
+      if ((s.flip ? -s.vy : s.vy) < PADV - 5 && overlap(s.x, s.y, s.size, s.size, p.x + 0.1, p.y, 0.8, 0.3)) {
+        s.vy = s.flip ? -PADV : PADV; s.grounded = false; s.ev |= EV_PAD;
       }
     }
     if (s.buf > 0 && !s.ship) {
@@ -354,7 +421,7 @@ function simStep(s, held, pressed, n) {
         if (s.orbs & (1 << i)) continue;
         const dx = cx - (o.x + 0.5), dy = cy - (o.y + 0.5);
         if (dx * dx + dy * dy < 0.95 * 0.95) {
-          s.vy = ORBV; s.grounded = false; s.orbs |= 1 << i; s.buf = 0; s.ev |= EV_ORB; s.jumps++;
+          s.vy = s.flip ? -ORBV : ORBV; s.grounded = false; s.orbs |= 1 << i; s.buf = 0; s.ev |= EV_ORB; s.jumps++;
           break;
         }
       }
@@ -1135,16 +1202,17 @@ function render(dt) {
   // transform portals (glowing oven-door ovals)
   L.portals.forEach(pt => {
     if (!vis(pt.x)) return;
-    const col = pt.mode === "ship" ? "#ff5cf0" : "#5cf0ff";
+    const PORTAL_STYLE = { ship: ["#ff5cf0", "🚀"], cube: ["#5cf0ff", "🍒"], flip: ["#7dff6a", "🙃"], normal: ["#ffd23f", "🙂"] };
+    const [col, icon] = PORTAL_STYLE[pt.mode];
     const cx = sx(pt.x + 0.5), cy = sy(2.2), rx = T * 0.55, ry = T * 2.1;
     ctx.save(); ctx.shadowColor = col; ctx.shadowBlur = 20 + pulse * 14;
     ctx.strokeStyle = col; ctx.lineWidth = T * 0.16;
     ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
-    ctx.fillStyle = pt.mode === "ship" ? "rgba(255,92,240,0.18)" : "rgba(92,240,255,0.18)";
+    ctx.fillStyle = col + "2e";
     ctx.beginPath(); ctx.ellipse(cx, cy, rx * 0.8, ry * 0.92, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = "#fff"; ctx.font = `700 ${Math.round(T * 0.42)}px Fredoka, system-ui, sans-serif`;
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(pt.mode === "ship" ? "🚀" : "🍒", cx, cy);
+    ctx.fillText(icon, cx, cy);
   });
 
   // orbs (rings)
@@ -1173,9 +1241,9 @@ function render(dt) {
   if (mode === "play" || mode === "paused" || (mode === "win" && particles.length)) {
     if (mode !== "win") {
       ctx.save();
-      ctx.translate(sx(P.x + P.size / 2), sy(P.y + P.size / 2) + squash * T * 0.08);
+      ctx.translate(sx(P.x + P.size / 2), sy(P.y + P.size / 2) + squash * T * 0.08 * (P.flip && !P.ship ? -1 : 1));
       if (P.inv > 0 && Math.floor(P.inv * 16) % 2) ctx.globalAlpha = 0.45;   // blink while invulnerable
-      ctx.scale(1 + 0.22 * squash, 1 - 0.22 * squash);
+      ctx.scale(1 + 0.22 * squash, (1 - 0.22 * squash) * (P.flip && !P.ship ? -1 : 1));   // upside down when gravity is flipped
       ctx.rotate(angle);
       if (P.ship) drawShip(ctx, fruit, T * 0.5, flapT, P.seed);
       else if (P.seed) drawSeed(ctx, fruit, T * 0.5 * (SEED / PS));
@@ -1190,7 +1258,7 @@ let last = performance.now();
 function emitTrail(ship) {
   const f = fruitDef();
   if (ship) { particles.push({ x: P.x - 0.2, y: P.y + 0.35, vx: -4 - Math.random() * 2, vy: (Math.random() - 0.5) * 1.5, life: 0.3, max: 0.3, c: ["#ffb020", "#fff6a8"][Math.random() < 0.5 ? 0 : 1], r: 0.05 + Math.random() * 0.06, g: 0 }); return; }
-  particles.push({ x: P.x + 0.1, y: P.y + 0.05, vx: -2 - Math.random() * 2, vy: 1 + Math.random() * 2, life: 0.35, max: 0.35, c: f.juice[Math.floor(Math.random() * 2)], r: 0.05 + Math.random() * 0.05, g: 0.5 });
+  particles.push({ x: P.x + 0.1, y: P.flip ? P.y + P.size - 0.05 : P.y + 0.05, vx: -2 - Math.random() * 2, vy: 1 + Math.random() * 2, life: 0.35, max: 0.35, c: f.juice[Math.floor(Math.random() * 2)], r: 0.05 + Math.random() * 0.05, g: 0.5 });
 }
 function updateParticles(dt) {
   for (const p of particles) { p.vy -= 30 * p.g * dt; p.x += p.vx * dt; p.y += p.vy * dt; if (p.y < 0 && p.g) { p.y = 0; p.vy *= -0.3; p.vx *= 0.7; } p.life -= dt; }
@@ -1226,7 +1294,7 @@ function frame(now) {
         const target = Math.round(angle / (Math.PI / 2)) * (Math.PI / 2);
         angle += (target - angle) * Math.min(1, dt * 22);
         trailT -= dt; if (trailT <= 0) { emitTrail(); trailT = 0.035; }
-      } else angle += 7.6 * dt;
+      } else angle += 7.6 * dt;   // (mirrored by the flip scale when upside down)
     }
     barFill.style.width = (progress() * 100).toFixed(1) + "%";
     pctEl.textContent = Math.floor(progress() * 100) + "%";
@@ -1239,7 +1307,7 @@ function frame(now) {
     shake = Math.max(0, shake - dt * 2);
     if (mode === "play") {
       camX = P.x - (W * 0.3) / T;
-      const ty = P.ship ? 0 : Math.max(0, P.y - 3);
+      const ty = P.ship ? 0 : Math.max(0, P.y - (P.flip ? 4 : 3));
       camY += (ty - camY) * Math.min(1, dt * 5);
     } else if (mode === "menu") {
       camX += SPEED * 0.35 * realDt; if (camX > L.end) camX = -10;
@@ -1256,7 +1324,9 @@ buildPicker();
 requestAnimationFrame(frame);
 
 // exposed for automated level testing
-window.JR = { simStep, newState, LEVELS, useLevel: i => { L = buildLevel(LEVELS[i]); return L; }, warp: x => { if (mode === "dead") respawn(); if (mode === "play") { P.x = x; P.y = 0; P.vy = 0; camX = P.x - (W * 0.3) / T; } }, freeze: on => { pause(on); show(pauseEl, false); } };
+window.JR = { simStep, newState, LEVELS, useLevel: i => { L = buildLevel(LEVELS[i]); return L; }, warp: x => { if (mode === "dead") respawn(); if (mode === "play") { P.x = x; P.y = 0; P.vy = 0; camX = P.x - (W * 0.3) / T; } }, freeze: on => { pause(on); show(pauseEl, false); },
+  // test hook: advance the run by `sec` of game time without input, independent of frame rate
+  tick: sec => { for (let i = 0; i < sec / STEP && !P.dead; i++) simStep(P, false, false, 1); P.ev = 0; camX = P.x - (W * 0.3) / T; camY = P.ship ? 0 : Math.max(0, P.y - (P.flip ? 4 : 3)); } };
 })();
 </script>
 </body>
