@@ -45,7 +45,7 @@
   .level-btn.sel { border-color: var(--accent); background: rgba(255,225,77,0.12); }
   .level-btn b { display: block; font-size: 19px; }
   .level-btn .tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; margin: 4px 0; color: #14081e; }
-  .level-btn .tag.easy { background: #7dffb3; } .level-btn .tag.normal { background: #ffd166; } .level-btn .tag.hard { background: #ff8a8a; }
+  .level-btn .tag.easy { background: #7dffb3; } .level-btn .tag.normal { background: #ffd166; } .level-btn .tag.hard { background: #ff8a8a; } .level-btn .tag.expert { background: #c99bff; }
   .level-btn small { display: block; color: var(--muted); font-size: 12px; }
   .speeds { display: flex; align-items: center; gap: 10px; margin: 0 auto 20px; max-width: 340px; }
   .speed-end { font-size: 12px; color: var(--muted); }
@@ -143,6 +143,9 @@ const G = 100;         // gravity, tiles/s^2
 const JV = 21;         // jump velocity
 const PADV = 30;       // jump pad launch velocity
 const ORBV = 20;       // jump ring velocity
+const SHIP_G = 55;     // spaceship gravity (floatier than the fruit)
+const FLAP = 13;       // spaceship upward kick per tap
+const SHIP_MAXFALL = -16;
 const PS = 0.9;        // player hitbox size (tiles)
 const STEP = 1 / 240;  // fixed physics step
 
@@ -153,7 +156,9 @@ const STEP = 1 / 240;  // fixed physics step
      B(x, y, w, h, kind?)  solid block / appliance ("cabinet" = hanging upper cupboard)
      S(x, y, n)            n upright knives/forks standing on y
      D(x, y, n)            n knives hanging point-down from the underside at y + 1
-     PAD(x, y)  launch pan     O(x, y)  jump ring     H(x, y, text)  hint     END(x)  finish line */
+     PAD(x, y)  launch pan     O(x, y)  jump ring     H(x, y, text)  hint     END(x)  finish line
+     PORTAL(x, "ship" | "cube", ceil)  transform portal; in ship mode taps flap (Flappy-style) and
+                                       the ship can't fly above `ceil` */
 const LEVELS = [
   {
     id: "apple", name: "Apple", difficulty: "Easy",
@@ -221,17 +226,53 @@ const LEVELS = [
       END(192);
     },
   },
+  {
+    id: "cherry", name: "Cherry", difficulty: "Expert",
+    themes: [
+      { at: 0,   top: "#2a0010", bot: "#9b1238", ground: "#1c000a", accent: "#ff4d6d" }, // cherry red
+      { at: 56,  top: "#05010f", bot: "#2a0f5c", ground: "#07031a", accent: "#ff5cf0" }, // space pantry
+      { at: 150, top: "#1a0f2e", bot: "#6b1f6b", ground: "#12081f", accent: "#ffd23f" }, // cherry night
+    ],
+    build({ B, S, D, PAD, O, H, PORTAL, END }) {
+      const CAB = (x, w, y = 3.2) => B(x, y, w, 30, "cabinet");
+      const HANG = (x, y = 2.2, n = 1) => D(x, y, n);
+      // a "pipe" for the ship section: appliance from the floor, cupboard from the ceiling, gap in between
+      const PIPE = (x, gapLo, gapHi) => {
+        if (gapLo > 0) B(x, 0, 2, gapLo, gapLo >= 2.5 ? "fridge" : gapLo >= 1.5 ? "oven" : "microwave");
+        B(x, gapHi, 2, 6.5 - gapHi, "cabinet");   // stops at the ship ceiling (6.5)
+      };
+      // Section 1 — fruit warm-up under the cupboards
+      S(12, 0, 2); S(18, 0, 2);
+      CAB(24, 10); S(27); HANG(30); S(32, 0, 2);
+      S(40); PAD(44); S(46, 0, 3);
+      // Section 2 — blast off: Flappy-style spaceship
+      H(54, 3.2, "Spaceship! Tap to flap, don't hold");
+      PORTAL(60, "ship"); CAB(61, 99, 6.5);
+      PIPE(70, 1, 4); PIPE(78, 2, 5); PIPE(86, 0, 3); PIPE(94, 3, 6);
+      PIPE(102, 1.5, 4); PIPE(110, 2.5, 5); PIPE(117, 1, 3.6); PIPE(124, 3, 5.6);
+      S(130, 0, 12); CAB(132, 9, 4.6); HANG(134, 3.6); HANG(138, 3.6);
+      PIPE(146, 2, 4.6); PIPE(153, 0.8, 3.4);
+      PORTAL(160, "cube");
+      // Section 3 — back on foot for the finale
+      H(162, 3.2, "Back to fruit!");
+      S(168, 0, 2);
+      CAB(174, 16); S(177); HANG(180); S(182); HANG(185); S(187);
+      S(196, 0, 12); O(197, 1.5); O(201, 1.5); O(205, 1.5);
+      END(216);
+    },
+  },
 ];
 
 function buildLevel(def) {
   const lv = { id: def.id, name: def.name, difficulty: def.difficulty, themes: def.themes,
-               blocks: [], spikes: [], pads: [], orbs: [], hints: [], end: 0 };
+               blocks: [], spikes: [], pads: [], orbs: [], hints: [], portals: [], end: 0 };
   def.build({
     B: (x, y, w = 1, h = 1, kind) => lv.blocks.push({ x, y, w, h, kind }),
     S: (x, y = 0, n = 1) => { for (let i = 0; i < n; i++) lv.spikes.push({ x: x + i, y }); },
     D: (x, y, n = 1) => { for (let i = 0; i < n; i++) lv.spikes.push({ x: x + i, y, down: true }); },
     PAD: (x, y = 0) => lv.pads.push({ x, y }),
     O: (x, y) => lv.orbs.push({ x, y }),
+    PORTAL: (x, mode, ceil = 6.5) => lv.portals.push({ x, mode, ceil }),
     H: (x, y, text) => lv.hints.push({ x, y, text }),
     END: x => { lv.end = x; },
   });
@@ -240,19 +281,20 @@ function buildLevel(def) {
 let L = buildLevel(LEVELS[0]);
 
 /* ================= Simulation (pure, used by game & solver) ================= */
-const EV_JUMP = 1, EV_LAND = 2, EV_PAD = 4, EV_ORB = 8;
-function newState() { return { x: 0, y: 0, vy: 0, grounded: true, dead: false, won: false, orbs: 0, buf: 0, ev: 0, jumps: 0 }; }
+const EV_JUMP = 1, EV_LAND = 2, EV_PAD = 4, EV_ORB = 8, EV_PORTAL = 16;
+function newState() { return { x: 0, y: 0, vy: 0, grounded: true, dead: false, won: false, orbs: 0, buf: 0, ev: 0, jumps: 0, ship: false, ceil: 0, portals: 0 }; }
 const overlap = (ax, ay, aw, ah, bx, by, bw, bh) => ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
 
 function simStep(s, held, pressed, n) {
   if (pressed) s.buf = 0.12;
   for (let k = 0; k < n; k++) {
     const h = STEP, py = s.y, wasGrounded = s.grounded;
-    s.vy = Math.max(s.vy - G * h, -40);
+    s.vy = s.ship ? Math.max(s.vy - SHIP_G * h, SHIP_MAXFALL) : Math.max(s.vy - G * h, -40);
     s.y += s.vy * h;
     s.x += SPEED * h;
     s.grounded = false;
     if (s.y <= 0) { s.y = 0; s.vy = 0; s.grounded = true; }
+    if (s.ship && s.y + PS > s.ceil) { s.y = s.ceil - PS; if (s.vy > 0) s.vy = 0; }   // ship bumps the ceiling safely
 
     for (const b of L.blocks) {
       if (b.x > s.x + 2 || b.x + b.w < s.x - 1) continue;
@@ -264,17 +306,28 @@ function simStep(s, held, pressed, n) {
         }
       }
     }
-    if (s.grounded && !wasGrounded) s.ev |= EV_LAND;
+    if (s.grounded && !wasGrounded && !s.ship) s.ev |= EV_LAND;
 
-    if (s.grounded && (held || s.buf > 0)) {
+    for (let i = 0; i < L.portals.length; i++) {
+      const pt = L.portals[i];
+      if (!(s.portals & (1 << i)) && s.x + PS >= pt.x) {
+        s.portals |= 1 << i; s.ship = pt.mode === "ship"; s.ceil = pt.ceil; s.ev |= EV_PORTAL;
+        if (s.ship) s.vy = Math.min(s.vy, 4);
+      }
+    }
+
+    if (s.ship) {
+      // Flappy-style: each tap gives one kick upward; holding does nothing extra
+      if (s.buf > 0) { s.vy = FLAP; s.grounded = false; s.buf = 0; s.ev |= EV_JUMP; s.jumps++; }
+    } else if (s.grounded && (held || s.buf > 0)) {
       s.vy = JV; s.grounded = false; s.buf = 0; s.ev |= EV_JUMP; s.jumps++;
     }
-    for (const p of L.pads) {
+    if (!s.ship) for (const p of L.pads) {
       if (s.vy < PADV - 5 && overlap(s.x, s.y, PS, PS, p.x + 0.1, p.y, 0.8, 0.3)) {
         s.vy = PADV; s.grounded = false; s.ev |= EV_PAD;
       }
     }
-    if (s.buf > 0) {
+    if (s.buf > 0 && !s.ship) {
       const cx = s.x + PS / 2, cy = s.y + PS / 2;
       for (let i = 0; i < L.orbs.length; i++) {
         const o = L.orbs[i];
@@ -511,6 +564,13 @@ function sfxDeath() {
   g.gain.setValueAtTime(0.4, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
   o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.4);
 }
+function sfxPortal() {
+  if (!actx) return; const t = actx.currentTime;
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = "sawtooth"; o.frequency.setValueAtTime(220, t); o.frequency.exponentialRampToValueAtTime(880, t + 0.25);
+  g.gain.setValueAtTime(0.12, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.32);
+}
 function sfxPad() { if (actx) { const t = actx.currentTime; noise(t, 0.18, 0.18, 2500, "bandpass", master); tone(660, t, 0.15, "triangle", 0.12, master); } }
 function sfxOrb() { if (actx) { const t = actx.currentTime; tone(988, t, 0.12, "triangle", 0.12, master); tone(1319, t + 0.04, 0.14, "triangle", 0.08, master); } }
 function sfxWin() {
@@ -527,7 +587,7 @@ function setMuted(m) {
 let mode = "menu";               // menu | play | dead | paused | win
 let P = newState();
 let attempts = 0, angle = 0, squash = 0, camX = 0, camY = 0, shake = 0, deadTimer = 0, acc = 0, trailT = 0;
-let held = false, pressQueued = false;
+let held = false, pressQueued = false, flapT = 0;
 let particles = [];
 let fruit = store.get("jr_fruit", "apple");
 let levelIdx = Math.min(LEVELS.length - 1, Math.max(0, Number(store.get("jr_level", 0)) || 0));
@@ -874,6 +934,29 @@ function drawAppliance(c, b, x, y, w, h, u, accent, pulse) {
   }
 }
 
+// the fruit rides in a little saucer: hull, fins, glass dome, thruster flame
+function drawShip(c, kind, r, flame) {
+  if (flame > 0) {
+    const len = r * (0.7 + flame * 5);
+    const fg = c.createLinearGradient(-r * 1.1, 0, -r * 1.1 - len, 0);
+    fg.addColorStop(0, "#fff6a8"); fg.addColorStop(0.4, "#ffb020"); fg.addColorStop(1, "rgba(255,60,0,0)");
+    c.fillStyle = fg; c.beginPath(); c.moveTo(-r * 1.0, r * 0.18); c.lineTo(-r * 1.1 - len, r * 0.36); c.lineTo(-r * 1.0, r * 0.56); c.closePath(); c.fill();
+  }
+  c.fillStyle = "#e85d4a"; c.strokeStyle = "#7a1e12"; c.lineWidth = r * 0.06;
+  c.beginPath(); c.moveTo(-r * 0.9, r * 0.25); c.lineTo(-r * 1.25, -r * 0.15); c.lineTo(-r * 0.55, r * 0.2); c.closePath(); c.fill(); c.stroke();   // tail fin
+  const hg = c.createLinearGradient(0, r * 0.05, 0, r * 0.75);
+  hg.addColorStop(0, "#f4f7fa"); hg.addColorStop(0.5, "#b9c2cc"); hg.addColorStop(1, "#6d7680");
+  c.fillStyle = hg; c.strokeStyle = "#3c434b"; c.lineWidth = r * 0.07;
+  c.beginPath(); c.ellipse(0, r * 0.38, r * 1.15, r * 0.36, 0, 0, Math.PI * 2); c.fill(); c.stroke();                       // hull
+  c.fillStyle = "#ffe14d";
+  for (const lx of [-0.55, 0, 0.55]) { c.beginPath(); c.arc(lx * r, r * 0.42, r * 0.08, 0, Math.PI * 2); c.fill(); }      // lights
+  c.save(); c.translate(0, -r * 0.12); c.scale(0.62, 0.62); drawFruit(c, kind, r); c.restore();                           // pilot
+  c.fillStyle = "rgba(170,225,255,0.22)"; c.strokeStyle = "rgba(220,245,255,0.8)"; c.lineWidth = r * 0.05;
+  c.beginPath(); c.arc(0, r * 0.12, r * 0.72, Math.PI, 0); c.closePath(); c.fill(); c.stroke();                         // dome
+  c.strokeStyle = "rgba(255,255,255,0.7)"; c.lineWidth = r * 0.06;
+  c.beginPath(); c.arc(0, r * 0.12, r * 0.58, Math.PI * 1.15, Math.PI * 1.4); c.stroke();
+}
+
 function render(dt) {
   const th = theme(camX + (W * 0.3) / T);
   const pulse = beatPulse();
@@ -943,7 +1026,7 @@ function render(dt) {
 
   // blocks (kitchen appliances)
   for (const b of L.blocks) {
-    if (!vis(b.x) && !vis(b.x + b.w)) continue;
+    if (sx(b.x + b.w) < -T || sx(b.x) > W + T) continue;   // off-screen (works for very long blocks too)
     drawAppliance(ctx, b, sx(b.x), sy(b.y + b.h), b.w * T, b.h * T, T, th.accent, pulse);
   }
 
@@ -972,6 +1055,21 @@ function render(dt) {
     ctx.fillStyle = "rgba(255,225,77,0.25)";
     ctx.beginPath(); ctx.moveTo(sx(p.x + 0.5), sy(p.y + 1.3)); ctx.lineTo(sx(p.x + 0.2), sy(p.y + 0.8)); ctx.lineTo(sx(p.x + 0.8), sy(p.y + 0.8)); ctx.fill();
   }
+
+  // transform portals (glowing oven-door ovals)
+  L.portals.forEach(pt => {
+    if (!vis(pt.x)) return;
+    const col = pt.mode === "ship" ? "#ff5cf0" : "#5cf0ff";
+    const cx = sx(pt.x + 0.5), cy = sy(2.2), rx = T * 0.55, ry = T * 2.1;
+    ctx.save(); ctx.shadowColor = col; ctx.shadowBlur = 20 + pulse * 14;
+    ctx.strokeStyle = col; ctx.lineWidth = T * 0.16;
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+    ctx.fillStyle = pt.mode === "ship" ? "rgba(255,92,240,0.18)" : "rgba(92,240,255,0.18)";
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx * 0.8, ry * 0.92, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#fff"; ctx.font = `700 ${Math.round(T * 0.42)}px Fredoka, system-ui, sans-serif`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(pt.mode === "ship" ? "🚀" : "🍒", cx, cy);
+  });
 
   // orbs (rings)
   L.orbs.forEach((o, i) => {
@@ -1002,7 +1100,8 @@ function render(dt) {
       ctx.translate(sx(P.x + PS / 2), sy(P.y + PS / 2) + squash * T * 0.08);
       ctx.scale(1 + 0.22 * squash, 1 - 0.22 * squash);
       ctx.rotate(angle);
-      drawFruit(ctx, fruit, T * 0.5);
+      if (P.ship) drawShip(ctx, fruit, T * 0.5, flapT);
+      else drawFruit(ctx, fruit, T * 0.5);
       ctx.restore();
     }
   }
@@ -1010,8 +1109,9 @@ function render(dt) {
 
 /* ================= Main loop ================= */
 let last = performance.now();
-function emitTrail() {
+function emitTrail(ship) {
   const f = fruitDef();
+  if (ship) { particles.push({ x: P.x - 0.2, y: P.y + 0.35, vx: -4 - Math.random() * 2, vy: (Math.random() - 0.5) * 1.5, life: 0.3, max: 0.3, c: ["#ffb020", "#fff6a8"][Math.random() < 0.5 ? 0 : 1], r: 0.05 + Math.random() * 0.06, g: 0 }); return; }
   particles.push({ x: P.x + 0.1, y: P.y + 0.05, vx: -2 - Math.random() * 2, vy: 1 + Math.random() * 2, life: 0.35, max: 0.35, c: f.juice[Math.floor(Math.random() * 2)], r: 0.05 + Math.random() * 0.05, g: 0.5 });
 }
 function updateParticles(dt) {
@@ -1027,6 +1127,8 @@ function frame(now) {
       simStep(P, held, pressQueued, 1); pressQueued = false; acc -= STEP;
       if (P.ev) {
         if (P.ev & EV_LAND) squash = 1;
+        if (P.ev & EV_PORTAL) { sfxPortal(); shake = 0.25; }
+        if ((P.ev & EV_JUMP) && P.ship) flapT = 0.14;
         if (P.ev & EV_PAD) sfxPad();
         if (P.ev & EV_ORB) sfxOrb();
         P.ev = 0;
@@ -1035,7 +1137,14 @@ function frame(now) {
       if (P.won) { win(); break; }
     }
     if (mode === "play") {
-      if (P.grounded) {
+      flapT = Math.max(0, flapT - dt);
+      if (P.ship) {
+        // nose follows the vertical speed
+        const target = Math.max(-0.55, Math.min(0.55, -P.vy * 0.045));
+        angle = Math.atan2(Math.sin(angle), Math.cos(angle));   // wrap leftover spin into -π..π
+        angle += (target - angle) * Math.min(1, dt * 14);
+        if (flapT > 0 || Math.random() < 0.3) { trailT -= dt; if (trailT <= 0) { emitTrail(true); trailT = 0.03; } }
+      } else if (P.grounded) {
         const target = Math.round(angle / (Math.PI / 2)) * (Math.PI / 2);
         angle += (target - angle) * Math.min(1, dt * 22);
         trailT -= dt; if (trailT <= 0) { emitTrail(); trailT = 0.035; }
@@ -1052,7 +1161,7 @@ function frame(now) {
     shake = Math.max(0, shake - dt * 2);
     if (mode === "play") {
       camX = P.x - (W * 0.3) / T;
-      const ty = Math.max(0, P.y - 3);
+      const ty = P.ship ? 0 : Math.max(0, P.y - 3);
       camY += (ty - camY) * Math.min(1, dt * 5);
     } else if (mode === "menu") {
       camX += SPEED * 0.35 * realDt; if (camX > L.end) camX = -10;
