@@ -45,7 +45,7 @@
   .level-btn.sel { border-color: var(--accent); background: rgba(255,225,77,0.12); }
   .level-btn b { display: block; font-size: 19px; }
   .level-btn .tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; margin: 4px 0; color: #14081e; }
-  .level-btn .tag.easy { background: #7dffb3; } .level-btn .tag.normal { background: #ffd166; } .level-btn .tag.hard { background: #ff8a8a; } .level-btn .tag.expert { background: #c99bff; } .level-btn .tag.master { background: #ff6ad5; }
+  .level-btn .tag.easy { background: #7dffb3; } .level-btn .tag.normal { background: #ffd166; } .level-btn .tag.hard { background: #ff8a8a; } .level-btn .tag.expert { background: #c99bff; } .level-btn .tag.master { background: #ff6ad5; } .level-btn .tag.insane { background: #5cffb0; }
   .level-btn small { display: block; color: var(--muted); font-size: 12px; }
   .speeds { display: flex; align-items: center; gap: 10px; margin: 0 auto 20px; max-width: 340px; }
   .speed-end { font-size: 12px; color: var(--muted); }
@@ -146,6 +146,8 @@ const ORBV = 20;       // jump ring velocity
 const SHIP_G = 28;     // spaceship falls with this when the button is released
 const SHIP_UP = 28;    // ...and rises with this while the button is held
 const SHIP_MAXRISE = 6, SHIP_MAXFALL = -7;   // gentle top speeds so the ship glides rather than darts
+const WAVE_V = 10;     // wave moves diagonally: vertical speed equals running speed (45°)
+const WAVE_INSET = 0.28; // wave hitbox is shrunk by this fraction on each side
 const SEED = 0.6;      // hitbox size after the fruit bursts into its seed
 const SEED_SAFE = 0.6; // seconds of invulnerability right after bursting
 const PS = 0.9;        // player hitbox size (tiles)
@@ -161,6 +163,8 @@ const STEP = 1 / 240;  // fixed physics step
      PAD(x, y)  launch pan     O(x, y)  jump ring     H(x, y, text)  hint     END(x)  finish line
      PORTAL(x, "flip" | "normal")      gravity portal: "flip" makes the fruit fall up and run along
                                        the undersides of blocks (jumps go downward); "normal" undoes it
+     PORTAL(x, "wave", ceil)           wave: hold = fly diagonally up, release = diagonally down; tiny
+                                       hitbox, touching any block is a hit, floor/ceiling are safe
      PORTAL(x, "ship" | "cube", ceil)  transform portal; in ship mode taps flap (Flappy-style) and
                                        the ship can't fly above `ceil` */
 const LEVELS = [
@@ -325,6 +329,47 @@ const LEVELS = [
       END(284);
     },
   },
+  {
+    id: "elderberry", name: "Elderberry", difficulty: "Insane",
+    themes: [
+      { at: 0,   top: "#0d0618", bot: "#4b1d6b", ground: "#08030f", accent: "#c08bff" }, // elderberry night
+      { at: 78,  top: "#03141a", bot: "#0f5a6b", ground: "#020c10", accent: "#5cffb0" }, // wave lagoon
+      { at: 140, top: "#120618", bot: "#6b1d5a", ground: "#0a030d", accent: "#ff8ad8" }, // syrup flight
+      { at: 202, top: "#001a12", bot: "#127a4a", ground: "#00100a", accent: "#e8ff5c" }, // elderflower
+    ],
+    build({ B, S, D, H, PORTAL, END }) {
+      const CAB = (x, w, y) => B(x, y, w, 30, "cabinet");
+      const PIPE = (x, gapLo, gapHi) => {
+        if (gapLo > 0) B(x, 0, 2, gapLo, gapLo >= 2.5 ? "fridge" : gapLo >= 1.5 ? "oven" : "microwave");
+        B(x, gapHi, 2, 6.5 - gapHi, "cabinet");
+      };
+      // wave "teeth": UP rises from the floor to height h; DOWN hangs from the ceiling down to y
+      const UP = (x, h, w = 1) => B(x, 0, w, h, h >= 2.5 ? "fridge" : h >= 1.5 ? "oven" : "toaster");
+      const DOWN = (x, y, ceil, w = 1) => B(x, y, w, ceil - y, "cabinet");
+      // Section 1 — straight into the spaceship
+      H(4, 3.2, "No running today: hold to fly!");
+      PORTAL(1, "ship"); CAB(2, 76, 6.5);
+      PIPE(10, 1, 3.6); PIPE(17, 2.4, 5); PIPE(24, 0.6, 3.2); PIPE(31, 3, 5.6); PIPE(38, 1.2, 3.8);
+      S(44, 0, 10); CAB(46, 8, 4.4); D(48, 3.4); D(52, 3.4);
+      PIPE(58, 2, 4.4); PIPE(65, 0.8, 3.2); PIPE(72, 2.6, 5);
+      // Section 2 — wave: hold to zig up, let go to zag down
+      H(76, 5.0, "Wave! Hold = up, let go = down");
+      PORTAL(80, "wave", 5.5); CAB(80, 62, 5.5);
+      UP(88, 3.5); DOWN(93, 2, 5.5); UP(98, 3.5); DOWN(103, 2, 5.5); UP(108, 3.5); DOWN(113, 2, 5.5);
+      S(120, 0, 14); D(120, 4.5, 14);                         // knives on the floor and the ceiling...
+      UP(124, 2.6); DOWN(128, 2.2, 5.5); UP(132, 2.8);        // ...with teeth to weave between
+      // Section 3 — tighter spaceship run
+      PORTAL(142, "ship"); CAB(142, 62, 6.5);
+      PIPE(150, 1, 3.4); PIPE(156, 2.4, 4.8); PIPE(162, 0.6, 3); PIPE(168, 2.8, 5.2);
+      PIPE(174, 1.4, 3.8); PIPE(180, 3, 5.4); PIPE(186, 1, 3.4); PIPE(192, 2.2, 4.6);
+      // Section 4 — fast wave to the finish
+      PORTAL(204, "wave", 5); CAB(204, 58, 5);
+      UP(210, 3); DOWN(214, 2, 5); UP(218, 3); DOWN(222, 2, 5); UP(226, 3); DOWN(230, 2, 5);
+      B(236, 0, 8, 1.2, "counter"); DOWN(236, 3.4, 5, 8);     // narrow tunnel: keep zig-zagging
+      UP(248, 3); DOWN(252, 2, 5);
+      END(262);
+    },
+  },
 ];
 
 function buildLevel(def) {
@@ -348,7 +393,7 @@ let L = buildLevel(LEVELS[0]);
 const EV_JUMP = 1, EV_LAND = 2, EV_PAD = 4, EV_ORB = 8, EV_PORTAL = 16, EV_BURST = 32;
 function newState() {
   return { x: 0, y: 0, vy: 0, grounded: true, dead: false, won: false, orbs: 0, buf: 0, ev: 0, jumps: 0,
-           ship: false, ceil: 0, portals: 0, thrust: false, flip: false,   // flip = gravity pulls upward
+           ship: false, wave: false, ceil: 0, portals: 0, thrust: false, flip: false,   // flip = gravity pulls upward
            size: PS, seed: false, inv: 0 };   // size shrinks to SEED when the fruit bursts
 }
 const overlap = (ax, ay, aw, ah, bx, by, bw, bh) => ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
@@ -359,7 +404,7 @@ function hurt(s) {
   if (s.inv > 0) return false;
   if (!s.seed) {
     s.seed = true; s.x += (s.size - SEED) / 2; s.size = SEED; s.inv = SEED_SAFE;
-    if (!s.ship) { s.vy = s.flip ? Math.min(s.vy, -8) : Math.max(s.vy, 8); s.grounded = false; }
+    if (!s.ship && !s.wave) { s.vy = s.flip ? Math.min(s.vy, -8) : Math.max(s.vy, 8); s.grounded = false; }
     s.ev |= EV_BURST;
     return false;
   }
@@ -371,18 +416,24 @@ function simStep(s, held, pressed, n) {
   if (pressed) s.buf = 0.12;
   for (let k = 0; k < n; k++) {
     const h = STEP, py = s.y, wasGrounded = s.grounded, sz = s.size;
-    s.thrust = s.ship && held;
-    if (s.ship) s.vy = Math.min(SHIP_MAXRISE, Math.max(SHIP_MAXFALL, s.vy + (held ? SHIP_UP : -SHIP_G) * h));
+    s.thrust = (s.ship || s.wave) && held;
+    if (s.wave) s.vy = held ? WAVE_V : -WAVE_V;              // wave: straight diagonal up or down
+    else if (s.ship) s.vy = Math.min(SHIP_MAXRISE, Math.max(SHIP_MAXFALL, s.vy + (held ? SHIP_UP : -SHIP_G) * h));
     else if (s.flip) s.vy = Math.min(s.vy + G * h, 40);   // upside down: falls toward the ceiling
     else s.vy = Math.max(s.vy - G * h, -40);
     s.y += s.vy * h;
     s.x += SPEED * h;
     s.grounded = false;
-    if (s.y <= 0) { s.y = 0; s.vy = 0; s.grounded = !s.flip || s.ship; }
-    if (s.ship && s.y + sz > s.ceil) { s.y = s.ceil - sz; if (s.vy > 0) s.vy = 0; }   // ship bumps the ceiling safely
+    if (s.y <= 0) { s.y = 0; s.vy = s.wave ? s.vy : 0; s.grounded = !s.flip || s.ship || s.wave; }   // floor is safe to slide on
+    if ((s.ship || s.wave) && s.y + sz > s.ceil) { s.y = s.ceil - sz; if (s.vy > 0 && s.ship) s.vy = 0; }   // so is the ceiling
 
+    const ins = s.wave ? s.size * WAVE_INSET : 0;
     for (const b of L.blocks) {
       if (b.x > s.x + 2 || b.x + b.w < s.x - 1) continue;
+      if (s.wave) {   // the wave can't land on anything: touching a block is a hit
+        if (overlap(s.x + ins, s.y + ins, s.size - 2 * ins, s.size - 2 * ins, b.x, b.y, b.w, b.h) && hurt(s)) return s;
+        continue;
+      }
       if (s.x + s.size > b.x && s.x < b.x + b.w) {
         const top = b.y + b.h;
         if (s.y < top && s.y + s.size > b.y) {
@@ -398,18 +449,19 @@ function simStep(s, held, pressed, n) {
       const pt = L.portals[i];
       if (!(s.portals & (1 << i)) && s.x + s.size >= pt.x) {
         s.portals |= 1 << i; s.ev |= EV_PORTAL;
-        if (pt.mode === "ship") { s.ship = true; s.ceil = pt.ceil; s.vy = Math.min(s.vy, 4); }
-        else if (pt.mode === "cube") s.ship = false;
+        if (pt.mode === "ship") { s.ship = true; s.wave = false; s.ceil = pt.ceil; s.vy = Math.min(s.vy, 4); }
+        else if (pt.mode === "wave") { s.wave = true; s.ship = false; s.ceil = pt.ceil; }
+        else if (pt.mode === "cube") { s.ship = false; s.wave = false; }
         else if (pt.mode === "flip") { s.flip = true; s.grounded = false; }
         else if (pt.mode === "normal") { s.flip = false; s.grounded = false; }
       }
     }
 
-    if (!s.ship && s.grounded && (held || s.buf > 0)) {
+    if (!s.ship && !s.wave && s.grounded && (held || s.buf > 0)) {
       s.vy = s.flip ? -JV : JV; s.grounded = false; s.buf = 0; s.ev |= EV_JUMP; s.jumps++;
     }
-    if (s.ship) s.buf = 0;
-    if (!s.ship) for (const p of L.pads) {
+    if (s.ship || s.wave) s.buf = 0;
+    if (!s.ship && !s.wave) for (const p of L.pads) {
       if ((s.flip ? -s.vy : s.vy) < PADV - 5 && overlap(s.x, s.y, s.size, s.size, p.x + 0.1, p.y, 0.8, 0.3)) {
         s.vy = s.flip ? -PADV : PADV; s.grounded = false; s.ev |= EV_PAD;
       }
@@ -426,7 +478,7 @@ function simStep(s, held, pressed, n) {
         }
       }
     }
-    const m = s.size * 0.11;   // spike hitbox is a little smaller than the body
+    const m = s.size * (s.wave ? WAVE_INSET : 0.11);   // spike hitbox is a little smaller than the body
     for (const sp of L.spikes) {
       if (sp.x > s.x + 2 || sp.x < s.x - 2) continue;
       if (overlap(s.x + m, s.y + m, s.size - 2 * m, s.size - 2 * m, sp.x + 0.35, sp.down ? sp.y + 0.45 : sp.y, 0.3, 0.55)) {
@@ -718,7 +770,7 @@ function setMuted(m) {
 let mode = "menu";               // menu | play | dead | paused | win
 let P = newState();
 let attempts = 0, angle = 0, squash = 0, camX = 0, camY = 0, shake = 0, deadTimer = 0, acc = 0, trailT = 0;
-let held = false, pressQueued = false, flapT = 0;
+let held = false, pressQueued = false, flapT = 0, waveTrail = [];
 let particles = [];
 let fruit = store.get("jr_fruit", "apple");
 if (fruit === "orange") fruit = "avocado";
@@ -799,7 +851,7 @@ function startRun() {
 }
 function respawn() {
   P = newState(); attempts++; angle = 0; squash = 0; camX = P.x - (W * 0.3) / T; camY = 0; acc = 0;
-  particles = []; pressQueued = false;
+  particles = []; pressQueued = false; waveTrail = [];
   mode = "play"; startMusic();
 }
 function die() {
@@ -1100,6 +1152,21 @@ function drawShip(c, kind, r, flame, isSeed) {
   c.beginPath(); c.arc(0, r * 0.12, r * 0.58, Math.PI * 1.15, Math.PI * 1.4); c.stroke();
 }
 
+// wave vehicle: a paper dart pointing where it's heading, with the fruit (or seed) as pilot
+function drawWave(c, kind, r, isSeed) {
+  const f = FRUITS.find(f => f.id === kind) || FRUITS[0];
+  const g = c.createLinearGradient(-r, 0, r * 1.2, 0);
+  g.addColorStop(0, f.juice[1]); g.addColorStop(1, f.juice[0]);
+  c.fillStyle = g; c.strokeStyle = f.dark; c.lineWidth = r * 0.08; c.lineJoin = "round";
+  c.beginPath(); c.moveTo(r * 1.15, 0); c.lineTo(-r * 0.85, -r * 0.7); c.lineTo(-r * 0.45, 0); c.lineTo(-r * 0.85, r * 0.7); c.closePath();
+  c.fill(); c.stroke();
+  c.strokeStyle = "rgba(255,255,255,0.55)"; c.lineWidth = r * 0.05;
+  c.beginPath(); c.moveTo(r * 1.0, 0); c.lineTo(-r * 0.45, 0); c.stroke();
+  c.save(); c.translate(-r * 0.05, 0); c.scale(0.42, 0.42);
+  if (isSeed) drawSeed(c, kind, r * 0.8); else drawFruit(c, kind, r);
+  c.restore();
+}
+
 function render(dt) {
   const th = theme(camX + (W * 0.3) / T);
   const pulse = beatPulse();
@@ -1202,7 +1269,7 @@ function render(dt) {
   // transform portals (glowing oven-door ovals)
   L.portals.forEach(pt => {
     if (!vis(pt.x)) return;
-    const PORTAL_STYLE = { ship: ["#ff5cf0", "🚀"], cube: ["#5cf0ff", "🍒"], flip: ["#7dff6a", "🙃"], normal: ["#ffd23f", "🙂"] };
+    const PORTAL_STYLE = { ship: ["#ff5cf0", "🚀"], cube: ["#5cf0ff", "🍒"], flip: ["#7dff6a", "🙃"], normal: ["#ffd23f", "🙂"], wave: ["#5cffb0", "🌊"] };
     const [col, icon] = PORTAL_STYLE[pt.mode];
     const cx = sx(pt.x + 0.5), cy = sy(2.2), rx = T * 0.55, ry = T * 2.1;
     ctx.save(); ctx.shadowColor = col; ctx.shadowBlur = 20 + pulse * 14;
@@ -1237,15 +1304,26 @@ function render(dt) {
   }
   ctx.globalAlpha = 1;
 
+  // wave trail: a glowing zig-zag line behind the dart
+  if (waveTrail.length > 1) {
+    ctx.save(); ctx.lineJoin = "round"; ctx.lineCap = "round";
+    ctx.shadowColor = fruitDef().juice[0]; ctx.shadowBlur = 12;
+    ctx.strokeStyle = fruitDef().juice[0]; ctx.lineWidth = T * 0.14;
+    ctx.beginPath(); waveTrail.forEach((p, i) => i ? ctx.lineTo(sx(p.x), sy(p.y)) : ctx.moveTo(sx(p.x), sy(p.y))); ctx.stroke();
+    ctx.shadowBlur = 0; ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.lineWidth = T * 0.04; ctx.stroke();
+    ctx.restore();
+  }
+
   // player
   if (mode === "play" || mode === "paused" || (mode === "win" && particles.length)) {
     if (mode !== "win") {
       ctx.save();
-      ctx.translate(sx(P.x + P.size / 2), sy(P.y + P.size / 2) + squash * T * 0.08 * (P.flip && !P.ship ? -1 : 1));
+      ctx.translate(sx(P.x + P.size / 2), sy(P.y + P.size / 2) + squash * T * 0.08 * (P.flip && !P.ship && !P.wave ? -1 : 1));
       if (P.inv > 0 && Math.floor(P.inv * 16) % 2) ctx.globalAlpha = 0.45;   // blink while invulnerable
-      ctx.scale(1 + 0.22 * squash, (1 - 0.22 * squash) * (P.flip && !P.ship ? -1 : 1));   // upside down when gravity is flipped
+      ctx.scale(1 + 0.22 * squash, (1 - 0.22 * squash) * (P.flip && !P.ship && !P.wave ? -1 : 1));   // upside down when gravity is flipped
       ctx.rotate(angle);
-      if (P.ship) drawShip(ctx, fruit, T * 0.5, flapT, P.seed);
+      if (P.wave) drawWave(ctx, fruit, T * 0.5, P.seed);
+      else if (P.ship) drawShip(ctx, fruit, T * 0.5, flapT, P.seed);
       else if (P.seed) drawSeed(ctx, fruit, T * 0.5 * (SEED / PS));
       else drawFruit(ctx, fruit, T * 0.5);
       ctx.restore();
@@ -1283,8 +1361,13 @@ function frame(now) {
       if (P.won) { win(); break; }
     }
     if (mode === "play") {
+      if (!P.wave && waveTrail.length) waveTrail.splice(0, 3);   // trail fades out after leaving wave mode
       flapT = P.thrust ? Math.min(0.14, flapT + dt) : Math.max(0, flapT - dt);   // flame grows while holding
-      if (P.ship) {
+      if (P.wave) {
+        angle = P.vy > 0 ? -Math.PI / 4 : Math.PI / 4;   // snaps to 45° up or down
+        waveTrail.push({ x: P.x + P.size / 2, y: P.y + P.size / 2 });
+        if (waveTrail.length > 90) waveTrail.shift();
+      } else if (P.ship) {
         // nose follows the vertical speed
         const target = Math.max(-0.4, Math.min(0.4, -P.vy * 0.06));
         angle = Math.atan2(Math.sin(angle), Math.cos(angle));   // wrap leftover spin into -π..π
@@ -1307,7 +1390,7 @@ function frame(now) {
     shake = Math.max(0, shake - dt * 2);
     if (mode === "play") {
       camX = P.x - (W * 0.3) / T;
-      const ty = P.ship ? 0 : Math.max(0, P.y - (P.flip ? 4 : 3));
+      const ty = (P.ship || P.wave) ? 0 : Math.max(0, P.y - (P.flip ? 4 : 3));
       camY += (ty - camY) * Math.min(1, dt * 5);
     } else if (mode === "menu") {
       camX += SPEED * 0.35 * realDt; if (camX > L.end) camX = -10;
@@ -1326,7 +1409,7 @@ requestAnimationFrame(frame);
 // exposed for automated level testing
 window.JR = { simStep, newState, LEVELS, useLevel: i => { L = buildLevel(LEVELS[i]); return L; }, warp: x => { if (mode === "dead") respawn(); if (mode === "play") { P.x = x; P.y = 0; P.vy = 0; camX = P.x - (W * 0.3) / T; } }, freeze: on => { pause(on); show(pauseEl, false); },
   // test hook: advance the run by `sec` of game time without input, independent of frame rate
-  tick: sec => { for (let i = 0; i < sec / STEP && !P.dead; i++) simStep(P, false, false, 1); P.ev = 0; camX = P.x - (W * 0.3) / T; camY = P.ship ? 0 : Math.max(0, P.y - (P.flip ? 4 : 3)); } };
+  tick: sec => { for (let i = 0; i < sec / STEP && !P.dead; i++) simStep(P, false, false, 1); P.ev = 0; camX = P.x - (W * 0.3) / T; camY = (P.ship || P.wave) ? 0 : Math.max(0, P.y - (P.flip ? 4 : 3)); waveTrail = []; } };
 })();
 </script>
 </body>
