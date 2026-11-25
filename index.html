@@ -143,9 +143,9 @@ const G = 100;         // gravity, tiles/s^2
 const JV = 21;         // jump velocity
 const PADV = 30;       // jump pad launch velocity
 const ORBV = 20;       // jump ring velocity
-const SHIP_G = 50;     // spaceship falls with this when the button is released
-const SHIP_UP = 50;    // ...and rises with this while the button is held
-const SHIP_MAXRISE = 9, SHIP_MAXFALL = -11;
+const SHIP_G = 28;     // spaceship falls with this when the button is released
+const SHIP_UP = 28;    // ...and rises with this while the button is held
+const SHIP_MAXRISE = 6, SHIP_MAXFALL = -7;   // gentle top speeds so the ship glides rather than darts
 const SEED = 0.6;      // hitbox size after the fruit bursts into its seed
 const SEED_SAFE = 0.6; // seconds of invulnerability right after bursting
 const PS = 0.9;        // player hitbox size (tiles)
@@ -1218,7 +1218,7 @@ function frame(now) {
       flapT = P.thrust ? Math.min(0.14, flapT + dt) : Math.max(0, flapT - dt);   // flame grows while holding
       if (P.ship) {
         // nose follows the vertical speed
-        const target = Math.max(-0.55, Math.min(0.55, -P.vy * 0.045));
+        const target = Math.max(-0.4, Math.min(0.4, -P.vy * 0.06));
         angle = Math.atan2(Math.sin(angle), Math.cos(angle));   // wrap leftover spin into -π..π
         angle += (target - angle) * Math.min(1, dt * 14);
         if (flapT > 0 || Math.random() < 0.3) { trailT -= dt; if (trailT <= 0) { emitTrail(true); trailT = 0.03; } }
