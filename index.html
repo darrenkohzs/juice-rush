@@ -43,9 +43,7 @@
     color: var(--ink); font: inherit; cursor: pointer; text-align: left; transition: transform .12s, border-color .12s, background .12s; }
   .level-btn:hover { transform: translateY(-2px); background: rgba(255,255,255,0.1); }
   .level-btn.sel { border-color: var(--accent); background: rgba(255,225,77,0.12); }
-  .level-btn b { display: block; font-size: 19px; }
-  .level-btn .tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; margin: 4px 0; color: #14081e; }
-  .level-btn .tag.easy { background: #7dffb3; } .level-btn .tag.normal { background: #ffd166; } .level-btn .tag.hard { background: #ff8a8a; } .level-btn .tag.expert { background: #c99bff; } .level-btn .tag.master { background: #ff6ad5; } .level-btn .tag.insane { background: #5cffb0; }
+  .level-btn b { display: block; font-size: 19px; margin-bottom: 4px; }
   .level-btn small { display: block; color: var(--muted); font-size: 12px; }
   .speeds { display: flex; align-items: center; gap: 10px; margin: 0 auto 20px; max-width: 340px; }
   .speed-end { font-size: 12px; color: var(--muted); }
@@ -169,7 +167,7 @@ const STEP = 1 / 240;  // fixed physics step
                                        the ship can't fly above `ceil` */
 const LEVELS = [
   {
-    id: "apple", name: "Apple", difficulty: "Easy",
+    id: "apple", name: "Apple",
     themes: [
       { at: 0,   top: "#2b1055", bot: "#d53a9d", ground: "#3a0f4a", accent: "#ff6ad5" }, // berry dusk
       { at: 66,  top: "#0f3443", bot: "#2fbf8a", ground: "#0b3b2e", accent: "#7dffb3" }, // lime grove
@@ -210,7 +208,7 @@ const LEVELS = [
     },
   },
   {
-    id: "banana", name: "Banana", difficulty: "Hard",
+    id: "banana", name: "Banana",
     themes: [
       { at: 0,   top: "#10162e", bot: "#3c4a8f", ground: "#0c1022", accent: "#ffe135" }, // midnight pantry
       { at: 48,  top: "#2a1a05", bot: "#c9821b", ground: "#231503", accent: "#fff3a0" }, // caramel
@@ -246,7 +244,7 @@ const LEVELS = [
     },
   },
   {
-    id: "cherry", name: "Cherry", difficulty: "Expert",
+    id: "cherry", name: "Cherry",
     themes: [
       { at: 0,   top: "#2a0010", bot: "#9b1238", ground: "#1c000a", accent: "#ff4d6d" }, // cherry red
       { at: 56,  top: "#05010f", bot: "#2a0f5c", ground: "#07031a", accent: "#ff5cf0" }, // space pantry
@@ -287,7 +285,7 @@ const LEVELS = [
     },
   },
   {
-    id: "dragonfruit", name: "Dragonfruit", difficulty: "Master",
+    id: "dragonfruit", name: "Dragonfruit",
     themes: [
       { at: 0,   top: "#1a0420", bot: "#c41e6a", ground: "#14021a", accent: "#7dff6a" }, // dragon skin
       { at: 62,  top: "#04202a", bot: "#0f7a7a", ground: "#031418", accent: "#ff4fa8" }, // upside-down lagoon
@@ -330,7 +328,7 @@ const LEVELS = [
     },
   },
   {
-    id: "elderberry", name: "Elderberry", difficulty: "Insane",
+    id: "elderberry", name: "Elderberry",
     themes: [
       { at: 0,   top: "#0d0618", bot: "#4b1d6b", ground: "#08030f", accent: "#c08bff" }, // elderberry night
       { at: 78,  top: "#03141a", bot: "#0f5a6b", ground: "#020c10", accent: "#5cffb0" }, // wave lagoon
@@ -373,7 +371,7 @@ const LEVELS = [
 ];
 
 function buildLevel(def) {
-  const lv = { id: def.id, name: def.name, difficulty: def.difficulty, themes: def.themes,
+  const lv = { id: def.id, name: def.name, themes: def.themes,
                blocks: [], spikes: [], pads: [], orbs: [], hints: [], portals: [], end: 0 };
   def.build({
     B: (x, y, w = 1, h = 1, kind) => lv.blocks.push({ x, y, w, h, kind }),
@@ -797,7 +795,7 @@ function buildLevelPicker() {
     b.className = "level-btn" + (i === levelIdx ? " sel" : "");
     b.setAttribute("aria-pressed", i === levelIdx);
     const bst = store.get(bestKey(lv.id), 0);
-    b.innerHTML = `<b>${i + 1}. ${lv.name}</b><span class="tag ${lv.difficulty.toLowerCase()}">${lv.difficulty}</span>` +
+    b.innerHTML = `<b>${i + 1}. ${lv.name}</b>` +
       `<small>${bst >= 100 ? "Completed ✓" : bst > 0 ? `Best ${bst}%` : "Not played"}</small>`;
     b.onclick = e => { e.currentTarget.blur(); selectLevel(i); };
     wrap.appendChild(b);
